@@ -4,3 +4,184 @@
 :toc: left
 :toclevels: 3
 :sectnums:
+
+== コンテナの概要：軽量で移植性の高いアプリケーション実行環境
+
+* コンテナとは
+** アプリケーションとその依存関係を一つのパッケージにまとめ独立して実行できる環境。
+* メリット
+** 複数環境で同じコンテナを動作させることができるので移植性が高い
+** VMに比べて軽量でインフラリソースを効率的に利用できる
+* 代表的なコンテナ技術
+** Docker
+** Kubernetes
+** クラウド（ECS, Cloud Run, ...）
+
+== VMとコンテナの違い
+
+* VM
+** 同じマシンで動作する他のVMとリソース隔離
+** VMごとに独立してOSが動作
+** 起動に時間がかかる
+* コンテナ
+** 他のコンテナとリソース隔離
+*** 独立したファイルシステム・ネットワーク
+** 通常のLinuxプロセスが動作するので軽量
+** プロセスと同程度の起動時間
+** コンテナのデプロイにはVMとコンテナを併用する場合が多い
+* コンテナイメージとコンテナランタイム
+** コンテナランタイム
+*** コンテナイメージからコンテナを作成・実行
+*** コンテナを起動・終了を管理
+*** コンテナの隔離に責任
+
+== containerd
+
+* 2016年12月14日 Docker社が Docker Engine のコアコンポーネントであるcontainerdをスピンアウト
+* Dockerdは内部でcontainerdを利用
+* container imageの pull, push、コンテナの実行と監視等が利用できる
+* lazy pullingやIPFSのような先進的な機能を利用可能
+* コンテナの隔離環境の構築や起動には低レベルランタイムを使う
+* Docker Desktopでは低レベルランタイムにデフォルトではruncを利用
+
+== runc
+
+* OCIによるリファレンス実装
+* Linux namespace, cgroups等を利用してコンテナの隔離環境を作成・管理
+** macOSには上記に相当するものが無いのでコンテナを利用したい場合はLinuxを動かす必要がある。
+** windowsにはHCSといった上記に相当するものが実装されていてWindows containerを起動する際に利用される
+* containerdはrunc以外のOCI互換の低レベルランタイムも利用可能
+** Kata Containersは軽量VMを用いて隔離コンテナ環境を用意
+** runwasiはWebAssemblyをコンテナとして実行できる
+
+== なぜcontainerdを直接使わずにDocker Desktopを使うのか？
+
+* コンテナを利用するためにはLinuxを動かす必要がある。
+** macOS上でLinuxを動かすVMを用意する必要がある。
+** Docker Desktopではそのあたりが利用者に気にしなくても使える仕組みになっている
+*** macOS上でDocker Desktopを起動するHypervisor Frameworkを利用しLinuxを起動してくれる
+*** kernel patches, security fixesはいい感じにdockerが適用している
+*** Gitのようにインストールするだけで便利に使えるのが普及した理由だと個人的には思っている
+
+== Docker Composeを利用して開発環境に複数のコンテナを起動する
+
+* アプリケーションは複数のサービスが強調して動作する。
+** アプリケーションサーバー、データベースサーバーなど
+* 複数のコンテナを起動する方法を学ぶ
+* Docker Composeは開発環境で複数のコンテナを動かすためのツール
+* 本番環境は複数のサーバーで構成されるので使えない。
+
+=== Docker Composeが管理するもの
+docker-compose.yml → docker compose up
+
+* サービス：コンテナと環境変数などの設定
+* ボリューム：コンテナ間で共有できる永続的なストレージ
+* ネットワーク：サービス間の通信を管理する仮想的なネットワーク
+
+=== Docker Composeの主なコマンド
+
+* docker compose up ：コンテナの起動
+* docker compose up -d ：デタッチモードでコンテナの起動
+* docker compose down ：コンテナの削除
+* docker compose build ：サービスのビルド
+
+=== docker-compose.yamlにサービス等の定義を書く
+
+* app（APIサーバー）
+** pythonディレクトリのDockerfileでビルドしたコンテナ起動
+* web（ReactのWebアプリ）
+** nodeイメージにソースコードのディレクトリをマウントして開発サーバーを起動
+* db（データベースサーバー）
+** データベースファイルを永続化できるようにマウント
+
+== Kubernetesとは？
+
+* GoogleのBorgと呼ばれる実行基盤がある
+** これを元にしたOSSで、GoogleやCNCFといった団体が管理、メンテナンスしている
+* Borgはコンテナオーケストレーションツール
+** ホストマシンを意識せずに、効率よくコンテナ（アプリケーション）を配置したい
+** 耐障害性を考えると、ホストマシンを意識しないようにしたい
+** Googleではその考えを元にBorgが開発され、運用されている
+* Googleの技術がOSSになり、一般的に使われるようになった
+
+== どうしてコンテナオーケストレーションツール？
+
+* Borgの論文によるメリットは以下
+** リソース管理、障害への処理を隠してエンジニアをアプリケーション開発に集中させる
+** 高い信頼性と可用性を保つ
+** 数万台オーダーのマシンでワークロードを効率的に実行させる
+* リソース管理を隠す
+** YAMLファイルを使ってあらゆるリソースを表現することができる
+** Kubernetesはkube-schedulerを使ってコンテナを指定したノードへ効率よく配置することができる
+* 障害への処理
+** ノードに障害が発生した際、コンテナは自動的に回復する
+* 信頼性、可用性
+** Kubernetesはetcdと呼ばれる分散ストレージを使って状態を管理している
+** マルチマスター構成にすることでSPOF（単一障害点）を減らすことができる
+*** Borgは99.999%の可用性を維持している
+* 数万台オーダーのマシンでワークロードを効率的に実行させる
+** スケジューラーの実装次第で効率よく配置できる
+*** Gmail、Google Docs、検索、BigTableなどで使われている
+
+== Google Kubernetes Engine（GKE）とは
+
+* Google Kubernetes Engine（GKE）はマネージドKubernetesサービスの一つ
+* Kubernetesのコントロールプレーン部分の定期的なアップデートや、コントローラーを提供してくれる
+** ノードの可用性などを気にせずにKubernetesの恩恵を受けることができる
+* クラスタネットワーキングや、ノードのカスタマイズがある程度柔軟ではあるが・・・
+** アップデートなどの面倒を見る必要はある
+** ワーカーノードの効率的な活用は自分たちでやる必要がある
+* さいきんではそのレベルの面倒を見てくれるGKE Autopilotもある
+** しかし構成が柔軟に変更できないなどの制約もある
+** Pod単位の課金になる
+** 2024年からバースト機能と呼ばれる、従来のVMなどで用いられたCPU利用率を超えた利用なども可能になった。
+
+== Kubernetesを簡単に理解する
+
+* nginxコンテナを3つ起動する...とする
+* Pod
+** コンテナをまとめた単位
+** Podの中で複数のコンテナが起動することもある
+* ReplicaSet
+** Podの集合体
+** 規定されたPodの数を保つように管理している
+* Deployment
+** ReplicaSetを管理している
+** 指定された構成やReplicaSet自体のアップデートを担う
+* リソースをどこに作って、だれがコンテナを作る？
+* Nodeに対してMaster/Workerという役割を与える
+** Node：実際のKubernetesクラスタが動作するマシン
+** Master：Kubernetesをつかさどるコントロールプレーンとして指定されたノード
+* kube-apiserverはKubernetesを制御するAPIサーバー
+** リソースの登録や状態の登録を行う
+* kube-scheduler
+** Nodeに対してPod（コンテナ類）を割り当てるスケジューラー
+** Nodeの空き状況を見ていい感じにPodをスケジュールする
+* kube-controller-manager
+** Kubernetesにビルドインされたリソースを監視、管理するコントローラー
+** 例えば、
+*** コンテナ（Deployment, Pod, ReplicaSet）
+*** ネットワーク（Service）
+*** ボリューム（Volume）
+* コントローラーが実際にオブジェクトを作るフローを見てみる
+
+== Kubernetesコントローラーを理解する
+
+* Deployment ControllerがDeploymentリソースの作成を検知
+** Deployment ControllerがReplicaSetリソースを作成
+* ReplicaSet ControllerがReplicaSetリソースの作成を検知
+** ReplicaSet ControllerがPodリソースを作成
+* 削除時は逆
+* オブジェクトの追加や削除をReconcile Loopで行う
+
+== Kubernetesリソース（オブジェクト）を理解する
+
+* Kubernetesのリソース、オブジェクト、APIの分類について理解した
+** Cluster ResourceとNamespaced Resource
+* Kubernetesコントローラーの役割について、コマンドを使いながら理解した
+** Deployment
+** Service
+
+== 参考文献
+【2024年版】MIXI 新卒向け技術研修の資料・動画を公開しました！
+https://zenn.dev/mixi/articles/2efdbeb0574906
